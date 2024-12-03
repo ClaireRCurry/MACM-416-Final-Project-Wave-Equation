@@ -1,0 +1,109 @@
+include "ffmatlib.idp"
+
+/*
+
+Implementation of the 1-D test problem on a 2-D domain (y is invariant). u_tt = u_xx + sin(t)
+with initial conditions u(x,0)=0 and u_t(x,0)=0
+
+Spatial discretization performed using a linear finite elements space and time discretization
+performed using a 3-point approximation of the second derivative
+
+-Claire R. A. Curry
+
+*/
+
+// Initial conditions
+func ic = 0;
+
+// Time step
+real dt = 0.001;
+
+// Max time
+real T = 5;
+
+// Precalculating time step constant for efficiency
+real idt2 = 1/(dt^2);
+
+// Number of grid points on each boundary
+int resolution = 150;
+
+// Initializing boundary as two distinct objects for different boundary conditions
+int C0 = 100;
+int C1 = 101;
+
+// Parametrizing domain boundary 1x1 square with bottom left corner at the origin
+border C01(t=0., 1.){x=t;y=0; label=C1;}
+border C02(t=0., 1.){x=1;y=t; label=C0;}
+border C03(t=0., 1.){x=1-t;y=1; label=C1;}
+border C04(t=0., 1.){x=0;y=1-t; label=C0;}
+
+// Show boundary
+plot(
+    C01(resolution) + 
+    C02(resolution) + 
+    C03(resolution) + 
+    C04(resolution), wait=true);
+
+
+// Build mesh
+mesh Th = buildmesh(
+    C01(resolution) + 
+    C02(resolution) + 
+    C03(resolution) + 
+    C04(resolution)
+    );
+
+// Show mesh
+plot(Th, wait=true);
+
+// Creating finite element space
+fespace Vh(Th,P1);
+Vh u, v, umid=ic, uold=ic, tau=0;
+
+// Plot initial conditions
+plot(uold, value=true, wait=true);
+
+// Variational problem to solve
+problem wave(u,v)
+    = int2d(Th)(u*v*idt2) + int2d(Th)(-2*umid*v*idt2 + dx(v)*dx(umid) + dy(v)*dy(umid) + uold*v*idt2) - int2d(Th)(sin(tau)*v)
+    + on(C0, u=0);
+
+// Initializing ability to write time step data
+ofstream ff("t1r"+resolution+".dat");
+savemesh(Th,"t1r"+resolution+".msh");
+ffSaveVh(Th,Vh,"t1r"+resolution+"Vh.txt");
+
+// Timestep counter
+int count = 0;
+int saveEvery = 100;
+
+// First step
+wave;
+ffSaveData(u,"t1r"+resolution+""+count/saveEvery+".txt");
+count += 1;
+
+// Time stepping from t=0 to t=T
+for(real t = dt; t < T+dt; t += dt){
+
+    // Updating data for next time step
+    uold = umid;
+    umid = u;
+    tau = t;
+
+    // Resolve equation
+    wave;
+
+    // Plot for bug detection and pretty colours
+    plot(u,value=true,fill=true);
+
+    // Output current time
+    cout << t;
+
+    // Save to txt file
+    if(count % saveEvery == 0){
+        ffSaveData(umid,"t1r"+resolution+""+count/saveEvery+".txt");
+    };
+
+    // Increment counter
+    count += 1;
+}

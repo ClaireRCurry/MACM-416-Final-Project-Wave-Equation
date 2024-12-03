@@ -1,0 +1,119 @@
+include "ffmatlib.idp"
+
+/*
+
+Implementation of the hard problem: Wave equation u_tt = Delta u on a 4-pointed star with homogeneous
+Neumann boundary conditions with intial displacement and starting at rest u_t(x,0)=0
+
+Spatial discretization performed using a linear finite elements space and time discretization
+performed using a 3-point approximation of the second derivative
+
+-Claire R. A. Curry
+
+*/
+
+// Initial Conditions
+func ic = (exp(-(x)^2 - (y)^2));
+
+// Timestep
+real dt = 0.001;
+
+// End time
+real T = 10;
+
+// Precomputing time step scaling constant for efficiency
+real idt2 = 1/(dt^2);
+
+// Number of grid points on each boundary
+// Mesh is extrapolated based on the density
+// of gridpoints on the boundary
+int resolution = -10;
+
+// Defining the boundary as a single object with one ID
+int C0 = 100;
+
+// Defining the domain boundary with piecewise parametric functions
+border C01(t=0., 1.){x=(1-t)*(-1/sqrt(2.))           ; y=(1-t)*(1/sqrt(2.)) + 2.*t;     label=C0;}
+border C02(t=0., 1.){x=1/sqrt(2.)*t                  ; y=(1-t)*(2.) + (1/sqrt(2.))*t;   label=C0;}
+border C03(t=0., 1.){x=(1-t)*(1/sqrt(2.)) + 2.*t     ; y=(1-t)*(1/sqrt(2.));            label=C0;}
+border C04(t=0., 1.){x=(1-t)*2. + (1/sqrt(2.))*t     ; y=(-1/sqrt(2.))*t;               label=C0;}
+border C05(t=0., 1.){x=(1-t)*(1/sqrt(2.))            ; y=(1-t)*(-1/sqrt(2.)) + -2.*t;   label=C0;}
+border C06(t=0., 1.){x=-1/sqrt(2.)*t                 ; y=(1-t)*(-2.) + (-1/sqrt(2.))*t; label=C0;}
+border C07(t=0., 1.){x=(1-t)*(-1/sqrt(2.)) + -2.*t   ; y=(1-t)*(-1/sqrt(2.));           label=C0;}
+border C08(t=0., 1.){x=(1-t)*(-2.) + (-1/sqrt(2.))*t ; y=(1/sqrt(2.))*t;                label=C0;}
+
+// Show boundary
+plot(    C01(resolution) + 
+    C02(resolution) + 
+    C03(resolution) + 
+    C04(resolution) +
+    C05(resolution) +
+    C06(resolution) +
+    C07(resolution) +
+    C08(resolution), wait=true);
+
+// Construct the mesh
+mesh Th = buildmesh(
+    C01(resolution) + 
+    C02(resolution) + 
+    C03(resolution) + 
+    C04(resolution) +
+    C05(resolution) +
+    C06(resolution) +
+    C07(resolution) +
+    C08(resolution)
+    );
+
+// Show mesh
+plot(Th, wait=true);
+
+// Defining linear finite element space
+fespace Vh(Th,P1);
+
+// Both mid point and previous point in time defined as the initial conditions
+// This ensures our first time derivative is equal to zero in our time step
+Vh u, v, umid=ic, uold=ic;
+
+// Plot initial conditions
+plot(uold, value=true, wait=true);
+
+// Defining the time stepped wave equation via a variational formula.
+// Next time step u is calculated based on two previous time steps
+// using a centered three point approximation. O(dt^2) accuracy
+problem wave(u,v)
+    = int2d(Th)(u*v*idt2) + int2d(Th)(-2*umid*v*idt2 + dx(v)*dx(umid) + dy(v)*dy(umid) + uold*v*idt2);
+
+
+
+// Saving approximation data to external files
+ofstream ff("HPMovie.dat");
+savemesh(Th,"HPMovie.msh");
+ffSaveVh(Th,Vh,"HPMovieVh.txt");
+
+// Initializing first step of the wave equation
+wave;
+
+// Save a snap shot every "saveEvery" time steps.
+int count = 0;
+int saveEvery = 100;
+
+// Save first timestep
+ffSaveData(umid,"HPMovie"+count/saveEvery+".txt");
+for(real t = 0; t < T; t += dt){
+
+    // Updating our time steps
+    uold = umid;
+    umid = u;
+
+    // Solve the equation for u(t_n+1)
+    wave;
+
+    // Plot to observe the evolution
+    plot(u,value=true,fill=true);
+
+    // Save snapshots at specified timestep
+    if(count % saveEvery == 0){
+        ffSaveData(umid,"HPMovie"+count/saveEvery+".txt");
+    };
+    count += 1;
+}
